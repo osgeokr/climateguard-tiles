@@ -1,0 +1,13 @@
+pmtiles>=3.4
+mercantile
+shapely>=2
+pillow>=10
+numpy
+requests
+pystac-client
+odc-stac
+odc-geo
+rasterio
+dask[array]
+xarray
+affine

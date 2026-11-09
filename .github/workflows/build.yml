@@ -1,0 +1,103 @@
+name: Build offline map packs
+
+on:
+  workflow_dispatch:
+    inputs:
+      packs:
+        description: "Packs (comma separated) or all"
+        default: "all"
+      layers:
+        description: "Layers to rebuild"
+        type: choice
+        options: [both, mapa, sat]
+        default: both
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      packs: ${{ steps.p.outputs.packs }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: p
+        run: |
+          ALL=$(python3 -c "import json;print(json.dumps([f['properties']['id'] for f in json.load(open('aoi/aoi_5km.geojson'))['features'] if 'parent' not in f['properties']]))")
+          if [ "${{ inputs.packs }}" = "all" ]; then echo "packs=$ALL" >> $GITHUB_OUTPUT
+          else echo "packs=$(python3 -c "import json,sys;print(json.dumps([s.strip() for s in sys.argv[1].split(',') if s.strip()]))" "${{ inputs.packs }}")" >> $GITHUB_OUTPUT; fi
+
+  sat:
+    needs: plan
+    if: inputs.layers != 'mapa'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        pack: ${{ fromJson(needs.plan.outputs.packs) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt
+      - run: python scripts/build_sat.py --id ${{ matrix.pack }} --out out
+      - uses: actions/upload-artifact@v4
+        with: { name: "sat-${{ matrix.pack }}", path: out/*.pmtiles, retention-days: 3 }
+
+  mapa:
+    needs: plan
+    if: inputs.layers != 'sat'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21" }
+      - run: pip install -r requirements.txt
+      - name: OSM vector tiles (Planetiler, Geofabrik haiti-and-domrep)
+        run: |
+          mkdir -p data
+          curl -sSL -o planetiler.jar https://github.com/onthegomap/planetiler/releases/latest/download/planetiler.jar
+          java -Xmx6g -jar planetiler.jar --download --area=haiti-and-domrep --maxzoom=14 --output=data/drom.mbtiles --force
+      - name: Raster renderer (tileserver-gl)
+        run: |
+          docker run -d --name ts -v "$PWD/data:/data" -p 8080:8080 maptiler/tileserver-gl:latest --file /data/drom.mbtiles
+          for i in $(seq 1 60); do curl -sf http://localhost:8080/styles.json && break; sleep 2; done
+      - name: Render packs
+        run: |
+          for p in $(echo '${{ needs.plan.outputs.packs }}' | python3 -c "import json,sys;print(' '.join(json.load(sys.stdin)))"); do
+            python scripts/build_mapa.py --id "$p" --server http://localhost:8080 --style basic-preview --out out
+          done
+      - uses: actions/upload-artifact@v4
+        with: { name: mapa, path: out/*.pmtiles, retention-days: 3 }
+
+  publish:
+    needs: [sat, mapa]
+    if: always() && !cancelled() && (needs.sat.result == 'success' || needs.mapa.result == 'success')
+    runs-on: ubuntu-latest
+    environment: { name: github-pages, url: "${{ steps.dep.outputs.page_url }}" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install pmtiles requests mercantile shapely pillow
+      - uses: actions/download-artifact@v4
+        with: { path: site/packs, merge-multiple: true }
+      - run: python scripts/make_packs.py --site site --keep-from "https://osgeokr.github.io/climateguard-tiles"
+      - run: cp site_static/* site/ && touch site/.nojekyll && du -ah site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: site }
+      - id: dep
+        uses: actions/deploy-pages@v4

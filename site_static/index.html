@@ -1,0 +1,12 @@
+<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ClimateGuard offline maps</title>
+<style>body{font:15px/1.5 system-ui,sans-serif;max-width:720px;margin:24px auto;padding:0 16px;color:#1d2a22;background:#fff}td,th{padding:4px 10px;text-align:left;border-bottom:1px solid #ddd}small{color:#667}</style>
+<h1>ClimateGuard RD, mapas sin conexión</h1>
+<p>Paquetes de mapa para la app <a href="https://osgeokr.github.io/climateguard-rd/">ClimateGuard RD</a>. Se descargan desde la app (menú <b>Sin conexión</b>).</p>
+<table id="t"><tr><th>Zona</th><th>Capa</th><th>Tamaño</th><th>Zoom</th></tr></table>
+<p><small>Mapa: © OpenStreetMap contributors (ODbL), © OpenMapTiles. Satélite: Contains modified Copernicus Sentinel data.</small></p>
+<script>
+fetch('packs.json').then(r=>r.json()).then(j=>{const t=document.getElementById('t');
+for(const p of j.packs)for(const [k,l] of Object.entries(p.layers)){const tr=t.insertRow();
+[p.name.es,k==='sat'?'Satélite':'Mapa',(l.bytes/1e6).toFixed(1)+' MB',l.minzoom+'-'+l.maxzoom].forEach(v=>tr.insertCell().textContent=v)}});
+</script></html>
