@@ -81,9 +81,10 @@ jobs:
           fi
           $G -o src/ne.zip https://naciscdn.org/naturalearth/packages/natural_earth_vector.sqlite.zip \
             || $G -o src/ne.zip https://naturalearth.s3.amazonaws.com/packages/natural_earth_vector.sqlite.zip
+          $G -o src/lake.zip https://github.com/acalcutt/osm-lakelines/releases/download/v12/lake_centerline.shp.zip
           ls -la src
           java -Xmx6g -jar planetiler.jar --osm-path=src/drom.osm.pbf --water-polygons-path=src/water.zip \
-            --natural-earth-path=src/ne.zip --maxzoom=14 --output=data/drom.mbtiles --force
+            --natural-earth-path=src/ne.zip --lake-centerlines-path=src/lake.zip --maxzoom=14 --output=data/drom.mbtiles --force
       - name: Raster renderer (tileserver-gl)
         run: |
           docker run -d --name ts -v "$PWD/data:/data" -p 8080:8080 maptiler/tileserver-gl:latest --file /data/drom.mbtiles
