@@ -4,3 +4,4 @@ test-site/
 data/
 *.jar
 __pycache__/
+src/

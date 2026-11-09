@@ -67,9 +67,15 @@ jobs:
       - run: pip install -r requirements.txt
       - name: OSM vector tiles (Planetiler, Geofabrik haiti-and-domrep)
         run: |
-          mkdir -p data
-          curl -sSL -o planetiler.jar https://github.com/onthegomap/planetiler/releases/latest/download/planetiler.jar
-          java -Xmx6g -jar planetiler.jar --download --area=haiti-and-domrep --maxzoom=14 --output=data/drom.mbtiles --force
+          mkdir -p data src
+          G="curl -fSL --retry 6 --retry-all-errors --retry-delay 20 --connect-timeout 60"
+          $G -o planetiler.jar https://github.com/onthegomap/planetiler/releases/latest/download/planetiler.jar
+          $G -o src/drom.osm.pbf https://download.geofabrik.de/central-america/haiti-and-domrep-latest.osm.pbf
+          $G -o src/water.zip https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip
+          $G -o src/ne.zip https://naciscdn.org/naturalearth/packages/natural_earth_vector.sqlite.zip
+          ls -la src
+          java -Xmx6g -jar planetiler.jar --osm-path=src/drom.osm.pbf --water-polygons-path=src/water.zip \
+            --natural-earth-path=src/ne.zip --maxzoom=14 --output=data/drom.mbtiles --force
       - name: Raster renderer (tileserver-gl)
         run: |
           docker run -d --name ts -v "$PWD/data:/data" -p 8080:8080 maptiler/tileserver-gl:latest --file /data/drom.mbtiles
