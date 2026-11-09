@@ -71,8 +71,16 @@ jobs:
           G="curl -fSL --retry 6 --retry-all-errors --retry-delay 20 --connect-timeout 60"
           $G -o planetiler.jar https://github.com/onthegomap/planetiler/releases/latest/download/planetiler.jar
           $G -o src/drom.osm.pbf https://download.geofabrik.de/central-america/haiti-and-domrep-latest.osm.pbf
-          $G -o src/water.zip https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip
-          $G -o src/ne.zip https://naciscdn.org/naturalearth/packages/natural_earth_vector.sqlite.zip
+          # Water polygons: official file if reachable, otherwise built from the extract's coastlines
+          if ! curl -fSL --retry 1 --connect-timeout 30 -o src/water.zip https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq osmcoastline gdal-bin zip
+            osmcoastline src/drom.osm.pbf -o src/coast.db --output-polygons=water --srs=3857 --max-points=1000 --overwrite || [ $? -le 2 ]
+            mkdir -p src/water-polygons-split-3857
+            ogr2ogr -f "ESRI Shapefile" src/water-polygons-split-3857/water_polygons.shp src/coast.db water_polygons
+            (cd src && rm -f water.zip && zip -qr water.zip water-polygons-split-3857)
+          fi
+          $G -o src/ne.zip https://naciscdn.org/naturalearth/packages/natural_earth_vector.sqlite.zip \
+            || $G -o src/ne.zip https://naturalearth.s3.amazonaws.com/packages/natural_earth_vector.sqlite.zip
           ls -la src
           java -Xmx6g -jar planetiler.jar --osm-path=src/drom.osm.pbf --water-polygons-path=src/water.zip \
             --natural-earth-path=src/ne.zip --maxzoom=14 --output=data/drom.mbtiles --force
